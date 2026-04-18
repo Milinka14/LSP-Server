@@ -1,0 +1,99 @@
+; --- LOGO ULTIMATE LSP TEST SUITE ---
+; Tests: Autocomplete (:, "), Hover, Go-to-Definition, Scope, and Diagnostics
+
+make "global_ratio 0.75
+make "canvas_bg 7
+;tst
+make "temp_calc 3
+
+to setup_world :bg
+    clearscreen
+    setpencolor :bg
+    setpensize [3 3]
+    penup
+    home
+    pendown
+    print "Svijet_inicijalizovan
+end
+
+to draw_recursive_pattern :len :depth
+    ; Tests: Recursion and predicates (IF)
+    if :depth = 0 [ stop ]
+
+    setpensize (list :depth :depth)
+    setpencolor (modulo :depth 15)
+
+    forward :len
+    right 45
+    draw_recursive_pattern :len * :global_ratio :depth - 1
+    left 90
+    draw_recursive_pattern :len * :global_ratio :depth - 1
+    right 45
+    back :len
+end
+
+to variable_scope_test :val
+    ; Tests: Difference between local, localmake, and make
+    localmake "temp_calc :val * 2 ;local temp calc
+    local "shadow_var
+    make "shadow_var 100 ; This is local now because it was declared above
+
+    print (list "Lokalni_racun :temp_calc)
+    print (list "Sjena_varijabla :shadow_var)
+
+    ; Tests: Loops and their variables
+    for [i 1 5 1] [
+        forward :i
+        right 72
+    ]
+
+    ; Tests: Dotimes
+     dotimes [j 3] [ show :j ]
+end
+
+to predicate_and_control_demo
+    ; Tests: Question-mark commands and do.until / while
+    localmake "fuel 5
+
+    print "Pokrecem_while_test...
+    while [:fuel > 0] [
+        print (list "Gorivo :fuel)
+        make "fuel :fuel - 1
+    ]
+
+    ; Tests: Predicates and logic
+    test (shown?)
+    iftrue [
+        label "Visible
+    ]
+
+    ifelse (number? :fuel) [
+        print "Fuel_is_a_number
+    ] [
+        print "Unexpected_type
+    ]
+end
+
+; --- MAIN EXECUTION BLOCK ---
+
+setup_world :canvas_bg
+
+; Tests: Autocomplete for procedures and variables
+penup
+setxy (minus 100 random 200) 0
+pendown
+
+; Recursion call
+draw_recursive_pattern 60 5
+
+; Logical test calls
+variable_scope_test 10
+predicate_and_control_demo
+
+; Tests: Advanced motion commands from the specification
+setheading 180
+arc 360 50
+ellipse 40 80
+
+print "LSP_Test_Complete
+bye

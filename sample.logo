@@ -1,0 +1,109 @@
+; --- LOGO TESTNI PROGRAM: GRAFIKA I LOGIKA ---
+
+make "global_speed 100
+make "bg_color 7
+
+to init_canvas :color
+    clearscreen
+    setpencolor :color
+    setpensize [2 2]
+    penup
+    home
+    pendown
+end
+
+to draw_star :size
+    localmake "angle 144
+    repeat 5 [
+        forward :size
+        right :angle
+        wait 2
+    ]
+end
+
+to fractal_tree :length :depth
+    if :depth = 0 [ stop ]
+
+    setpensize (list :depth :depth)
+    setpencolor (modulo :depth 15)
+
+    forward :length
+    left 30
+    fractal_tree :length * 0.7 :depth - 1
+    right 60
+    fractal_tree :length * 0.7 :depth - 1
+    left 30
+    back :length
+end
+
+to random_walk :steps
+    local "i
+    for [i 1 :steps 1] [
+        setpencolor (random 16)
+        forward (random 20)
+        right (random 360)
+
+        ; Testiranje logičkih predikata
+        if (shown?) [
+            label "walking...
+        ]
+    ]
+end
+
+to math_demo :a :b
+    localmake "sum_val sum :a :b
+    localmake "diff_val minus :a :b
+    localmake "power_val power :a 2
+
+    print (list "Rezultati :sum_val :diff_val :power_val)
+
+    test :a > :b
+    iftrue [ print "A_je_vece ]
+    iffalse [ print "B_je_vece_ili_jednako ]
+end
+
+to control_test
+    localmake "counter 0
+
+    print "While_test
+    while [:counter < 5] [
+        print (list "brojac :counter)
+        make "counter :counter + 1
+    ]
+
+    print "Do_until_test
+    do.until [
+        MAKE "counter :counter - 1
+    ] [:counter = 0]
+
+    dotimes [i 3] [
+        print (list "iteracija :i)
+    ]
+end
+
+; --- GLAVNI DEO PROGRAMA ---
+
+init_canvas :bg_color
+
+; Crtanje zvezda na nasumičnim pozicijama
+repeat 3 [
+    penup
+    setxy (minus random 200 100) (minus random 200 100)
+    pendown
+    draw_star (sum 20 random 30)
+]
+
+; Crtanje fraktala
+penup
+setxy 0 -150
+setheading 33
+pendown
+fractal_tree 50 6
+
+; Logički i matematički testovi
+math_demo 10 5
+control_test
+random_walk 20
+
+print "Test_zavrsen
+bye

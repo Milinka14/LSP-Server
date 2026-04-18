@@ -1,0 +1,9 @@
+target/
+.gradle/
+out/
+*.iml
+.idea/
+build/
+.local-gradle/
+internshipTask.txt
+LOGO.txt

@@ -1,0 +1,5 @@
+mvn -q -DskipTests package dependency:copy-dependencies
+Set-Location "C:\Users\ivan\Desktop\lsp"; mvn -q -DskipTests exec:java "-Dexec.mainClass=com.logo.highlight.HighlightMain" "-Dexec.args=sample.logo"
+
+mvn clean compile
+mvn dependency:copy-dependencies -DincludeScope=runtime -DoutputDirectory=target\dependency

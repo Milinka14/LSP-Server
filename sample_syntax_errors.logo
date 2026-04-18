@@ -1,0 +1,69 @@
+; sample_syntax_errors.logo
+; Intentionally broken LOGO program to test diagnostics.
+
+; ERROR: unknown procedure/word (should trigger undefined procedure diagnostic)
+
+;WHEN TESTING YOU SHOULD USE THEM SEPARATLY BECAUSE THEY MAY INTERFERE WITH EACH OTHER
+;MAKING ERROR RECOVERY IS DIFFICULT IN THIS LAGNUAGE BEACUSE THERE IS NO CONSTANT SEPARATORS
+
+;unkown word
+unknowncomman 1
+
+TO square :size
+  ; ERROR: missing closing ] for REPEAT block
+  REPEAT 4 [ FD :size RT 90
+END
+
+; ERROR: MAKE expects quoted variable name ("name), not plain identifier
+MAKE n 50
+
+; ERROR: LOCAL declaration form is limited in this grammar context
+LOCAL "x
+
+; ERROR: SETXY expects two arguments
+SETXY 100 3
+
+; ERROR: malformed IF condition (missing right side after >)
+IF 2 > [ PRINT "bad ]
+
+; ERROR: IFELSE requires two blocks [true] [false], second block is missing
+IFELSE 1 = 1 [ PRINT "ok ]
+
+; ERROR: FOR control list malformed (missing limit/step parts)
+FOR [ i 1 ] [ PRINT :i ]
+
+; ERROR: DOTIMES control list malformed (missing times expression)
+DOTIMES [ j ] [ SHOW :j ]
+
+; ERROR: WHILE requires a block after condition
+WHILE [ RANDOM 2 = 0 ] SHOW "zero
+
+; ERROR: DO.UNTIL requires body block and condition expression
+DO.UNTIL [ MAKE "a RANDOM 10 ]
+
+; ERROR: SET POS form expects list/argument shape supported by grammar
+SET POS 10 20
+
+; ERROR: FILLED expects color + block, but block is not wrapped correctly
+FILLED "blue REPEAT 4 [ FD 20 RT 90 ]
+
+; ERROR: DEF expects quoted procedure name (SHOW DEF "star)
+SHOW DEF star
+
+; ERROR: standalone predicate usage may be rejected depending on grammar branch
+PENDOWN?
+
+; ERROR: FOREVER block is not closed with ]
+FOREVER [
+  FD 10
+END
+
+; ERROR: unknown procedure/word (should trigger undefined procedure diagnostic)
+treee 4 50
+
+; ERROR: missing END for procedure definition
+TO move :n
+  FD :n
+
+; ERROR: call after unclosed procedure definition context
+move 20

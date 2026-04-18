@@ -1,0 +1,125 @@
+; Comprehensive LOGO sample based on LOGO.txt command catalog
+
+TO square :size
+  REPEAT 4 [ FD :size RT 90 ]
+END
+
+TO star :n
+  REPEAT 5 [ FD :n RT 144 ]
+END
+
+MAKE "n 60
+MAKE "mylist [ "turtle "academy ]
+NAME 5 "myvar
+LOCALMAKE "tmp 10
+
+; Turtle Motion
+FORWARD 50
+BACK 20
+LEFT 90
+RIGHT 45
+HOME
+SETX 100
+SETY 200
+SETXY 100 120
+SETHEADING 145
+SH 90
+ARC 180 20
+ELLIPSE 80 40
+
+; Turtle Motion Queries
+SHOW POS
+SHOW XCOR
+SHOW YCOR
+SHOW HEADING
+SHOW TOWARDS [ 100 50 ]
+
+; Turtle and Window Control
+SHOWTURTLE
+HIDETURTLE
+CLEAN
+CLEARSCREEN
+CS
+WRAP
+WINDOW
+FENCE
+FILL
+FILLED "blue [ REPEAT 4 [ FD 20 RT 90 ] ]
+LABEL "logo
+SETLABELHEIGHT 24
+SHOW SHOWN?
+SHOW LABELSIZE
+
+; Pen and Background Control
+PENUP
+PENDOWN
+SETCOLOR 1
+SETPENCOLOR [ 50 100 50 ]
+SETWIDTH 4
+SETPENSIZE 2
+CHANGESHAPE "dog
+CSH 1
+SHOW PENDOWN?
+SHOW PENCOLOR
+SHOW PENSIZE
+
+; Variables
+MAKE "foo 5
+MAKE "i 54
+SHOW :foo
+SHOW THING "foo
+
+; Control structures
+REPEAT 4 [ FD 50 RT 90 ]
+IF 2 > 1 [ PRINT "hello ]
+IFELSE 0 > 1 [ PRINT "true ] [ PRINT "false ]
+TEST 3 > 4
+IFTRUE [ PRINT "true ]
+IFFALSE [ PRINT "false ]
+WAIT 5
+
+FOR [ i 1 3 1 ] [ PRINT :i ]
+;DOTIMES [ j 5 ] [ SHOW :j * :j ]
+DO.WHILE [ MAKE "a RANDOM 10 SHOW :a ] :a < 8
+WHILE ( RANDOM 2 ) = 0 [ SHOW "zero ]
+DO.UNTIL [ MAKE "b RANDOM 10 SHOW :b ] :b > 7
+UNTIL ( RANDOM 2 ) = 0 [ SHOW "one ]
+
+; Lists
+MAKE "mylist2 ( LIST "turtle "academy )
+PRINT FIRST :mylist2
+PRINT BUTFIRST :mylist2
+PRINT LAST :mylist2
+PRINT BUTLAST :mylist2
+PRINT ITEM 1 :mylist2
+PRINT PICK :mylist2
+PRINT FPUT "start :mylist2
+PRINT LPUT "end :mylist2
+SHOW ARRAY 2
+
+; Math
+PRINT SUM 2 3
+PRINT MINUS 8 2
+PRINT RANDOM 10
+PRINT MODULO 10 3
+SHOW POWER 3 4
+
+; Receivers
+MAKE "username READWORD
+MAKE "colors READLIST
+
+; Predicates
+PRINT WORD? "hello
+PRINT LISTP [ 1 2 3 ]
+PRINT ARRAY? ARRAY 2
+PRINT NUMBERP 25
+PRINT EMPTYP []
+PRINT EQUALP "no "yes
+PRINT NOTEQUALP "no "yes
+PRINT BEFORE? "bye "hi
+PRINT SUBSTRINGP "hello "helloworld
+square 100
+ARRAY? [3]
+
+
+BYE
