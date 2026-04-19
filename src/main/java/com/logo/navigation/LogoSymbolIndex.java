@@ -144,7 +144,7 @@ public final class LogoSymbolIndex {
         if (reference.scopeName != null) {
             ProcedureScope scope = procedureScopes.get(reference.scopeName);
             if (scope != null) {
-                LogoSymbol local = scope.findLatestLocalBefore(reference.name, reference.line, reference.column);
+                LogoSymbol local = scope.findLatestLocalBefore(reference.name, reference.line, reference.column, reference.offset);
                 if (local != null) {
                     return Optional.of(local);
                 }
@@ -175,31 +175,6 @@ public final class LogoSymbolIndex {
         return symbol.line() < line || (symbol.line() == line && symbol.column() <= column);
     }
 
-    private static int comparePosition(LogoSymbol symbol, int line, int column) {
-        if (symbol.line() != line) {
-            return Integer.compare(symbol.line(), line);
-        }
-        return Integer.compare(symbol.column(), column);
-    }
-
-    private static LogoSymbol findLatestBefore(List<LogoSymbol> sortedSymbols, int line, int column) {
-        int low = 0;
-        int high = sortedSymbols.size() - 1;
-        LogoSymbol best = null;
-
-        while (low <= high) {
-            int mid = (low + high) >>> 1;
-            LogoSymbol candidate = sortedSymbols.get(mid);
-            int cmp = comparePosition(candidate, line, column);
-            if (cmp <= 0) {
-                best = candidate;
-                low = mid + 1;
-            } else {
-                high = mid - 1;
-            }
-        }
-        return best;
-    }
 
     private static String normalize(String value) {
         return value.toLowerCase(Locale.ROOT);
@@ -251,14 +226,16 @@ public final class LogoSymbolIndex {
         private final int line;
         private final int column;
         private final int length;
+        private final int offset;
 
-        private Reference(String name, ReferenceKind kind, String scopeName, int line, int column, int length) {
+        private Reference(String name, ReferenceKind kind, String scopeName, int line, int column, int length, int offset) {
             this.name = name;
             this.kind = kind;
             this.scopeName = scopeName;
             this.line = line;
             this.column = column;
             this.length = length;
+            this.offset = offset;
         }
 
         private boolean contains(int cursorLine, int cursorColumn) {
@@ -269,22 +246,54 @@ public final class LogoSymbolIndex {
     private static final class ProcedureScope {
         private final String name;
         private final Map<String, LogoSymbol> parameters = new LinkedHashMap<>();
-        private final Map<String, List<LogoSymbol>> locals = new HashMap<>();
+        private final Map<String, List<LocalBinding>> locals = new HashMap<>();
 
         private ProcedureScope(String name) {
             this.name = name;
         }
 
         private void addLocal(LogoSymbol symbol) {
-            locals.computeIfAbsent(symbol.name(), k -> new ArrayList<>()).add(symbol);
+            locals.computeIfAbsent(symbol.name(), k -> new ArrayList<>()).add(new LocalBinding(symbol, -1, -1));
         }
 
-        private LogoSymbol findLatestLocalBefore(String varName, int line, int column) {
-            List<LogoSymbol> candidates = locals.get(varName);
+        private void addLocal(LogoSymbol symbol, int scopeStartOffset, int scopeEndOffset) {
+            locals.computeIfAbsent(symbol.name(), k -> new ArrayList<>()).add(new LocalBinding(symbol, scopeStartOffset, scopeEndOffset));
+        }
+
+        private LogoSymbol findLatestLocalBefore(String varName, int line, int column, int offset) {
+            List<LocalBinding> candidates = locals.get(varName);
             if (candidates == null) {
                 return null;
             }
-            return findLatestBefore(candidates, line, column);
+            for (int i = candidates.size() - 1; i >= 0; i--) {
+                LocalBinding binding = candidates.get(i);
+                if (!isBeforeOrAt(binding.symbol, line, column)) {
+                    continue;
+                }
+                if (binding.isInScope(offset)) {
+                    return binding.symbol;
+                }
+            }
+            return null;
+        }
+    }
+
+    private static final class LocalBinding {
+        private final LogoSymbol symbol;
+        private final int scopeStartOffset;
+        private final int scopeEndOffset;
+
+        private LocalBinding(LogoSymbol symbol, int scopeStartOffset, int scopeEndOffset) {
+            this.symbol = symbol;
+            this.scopeStartOffset = scopeStartOffset;
+            this.scopeEndOffset = scopeEndOffset;
+        }
+
+        private boolean isInScope(int offset) {
+            if (scopeStartOffset < 0 || scopeEndOffset < 0 || offset < 0) {
+                return true;
+            }
+            return offset >= scopeStartOffset && offset <= scopeEndOffset;
         }
     }
 
@@ -306,8 +315,11 @@ public final class LogoSymbolIndex {
                 globalsList.sort(byPosition);
             }
             for (ProcedureScope scope : scopes.values()) {
-                for (List<LogoSymbol> localsList : scope.locals.values()) {
-                    localsList.sort(byPosition);
+                for (List<LocalBinding> localsList : scope.locals.values()) {
+                    localsList.sort(Comparator
+                            .comparingInt((LocalBinding b) -> b.symbol.line())
+                            .thenComparingInt(b -> b.symbol.column())
+                            .thenComparing(b -> b.symbol.name()));
                 }
             }
 
@@ -325,8 +337,10 @@ public final class LogoSymbolIndex {
             }
             for (ProcedureScope scope : scopes.values()) {
                 symbols.addAll(scope.parameters.values());
-                for (List<LogoSymbol> localsList : scope.locals.values()) {
-                    symbols.addAll(localsList);
+                for (List<LocalBinding> localsList : scope.locals.values()) {
+                    for (LocalBinding binding : localsList) {
+                        symbols.add(binding.symbol);
+                    }
                 }
             }
             symbols.sort(byPosition);
@@ -409,7 +423,8 @@ public final class LogoSymbolIndex {
                     currentProcedure,
                     token.getLine() - 1,
                     token.getCharPositionInLine(),
-                    token.getText().length()
+                    token.getText().length(),
+                    token.getStartIndex()
             ));
         }
 
@@ -422,7 +437,8 @@ public final class LogoSymbolIndex {
                     currentProcedure,
                     token.getLine() - 1,
                     token.getCharPositionInLine(),
-                    token.getText().length()
+                    token.getText().length(),
+                    token.getStartIndex()
             ));
         }
 
@@ -436,8 +452,46 @@ public final class LogoSymbolIndex {
                     currentProcedure,
                     colon.getLine() - 1,
                     colon.getCharPositionInLine(),
-                    id.getText().length() + 1
+                    id.getText().length() + 1,
+                    colon.getStartIndex()
             ));
+        }
+
+        @Override
+        public void enterControlStructure(LogoParser.ControlStructureContext ctx) {
+            if (currentProcedure == null) {
+                return;
+            }
+            ProcedureScope scope = scopes.get(currentProcedure);
+            if (scope == null) {
+                return;
+            }
+
+            if (ctx.FOR() != null && ctx.forControlList() != null && !ctx.block().isEmpty()) {
+                Token loopVar = ctx.forControlList().ID().getSymbol();
+                addLoopScopedLocal(scope, loopVar, ctx.block(0));
+                return;
+            }
+
+            if (ctx.DOTIMES() != null && ctx.dotimesControlList() != null && !ctx.block().isEmpty()) {
+                Token loopVar = ctx.dotimesControlList().ID().getSymbol();
+                addLoopScopedLocal(scope, loopVar, ctx.block(0));
+            }
+        }
+
+        private void addLoopScopedLocal(ProcedureScope scope, Token varToken, LogoParser.BlockContext block) {
+            String name = normalize(varToken.getText());
+            LogoSymbol symbol = new LogoSymbol(
+                    name,
+                    LogoSymbolKind.LOCAL_VARIABLE,
+                    varToken.getLine() - 1,
+                    varToken.getCharPositionInLine(),
+                    varToken.getText().length(),
+                    scope.name
+            );
+            int scopeStart = block.getStart() == null ? -1 : block.getStart().getStartIndex();
+            int scopeEnd = block.getStop() == null ? -1 : block.getStop().getStopIndex();
+            scope.addLocal(symbol, scopeStart, scopeEnd);
         }
     }
 }

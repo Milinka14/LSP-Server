@@ -8,20 +8,26 @@ The task minimum was:
 
 Both are implemented, plus additional useful LSP features (diagnostics, completion, hover, references, and document symbols).
 
+The implementation is parser-driven (ANTLR) and keeps symbol resolution practical: it prioritizes stable editor behavior and predictable navigation over overly strict static semantics.
+
 ## 1) What is implemented
 
 ### Required by assignment
 - **Syntax highlighting** for LOGO tokens and constructs from the provided language reference (`LOGO.txt`): keywords, built-ins, user procedures, variables, numbers, strings, operators, delimiters, and comments.
 - **Go-to-declaration / go-to-definition** for:
   - procedure calls -> `TO` declaration
-  - variable references -> resolved declaration (parameter/local/global based on scope rules)
+  - variable references -> resolved declaration using implemented scope rules:
+    - procedure parameters are procedure-scoped
+    - `LOCALMAKE` variables are local to procedure scope
+    - `FOR` / `DOTIMES` control list variables are block scoped (visible only inside loop body)
+    - fallback to global declaration when no closer local/parameter match exists
 
 ### Additional LSP features
-- `textDocument/publishDiagnostics` (syntax errors + selected semantic checks)
-- `textDocument/completion`
-- `textDocument/hover` (including built-in docs and procedure signatures)
-- `textDocument/references` (reverse navigation / "find usages")
-- `textDocument/documentSymbol`
+- `textDocument/publishDiagnostics` - publishes syntax diagnostics from lexer/parser and selected low-noise semantic checks (for example undefined procedures).
+- `textDocument/completion` - suggests keywords, built-ins, user procedures, and variables based on cursor context.
+- `textDocument/hover` - shows symbol info (kind, declaration location, procedure parameters) and built-in command documentation.
+- `textDocument/references` - returns all usages of a selected procedure/variable, with optional inclusion of its declaration.
+- `textDocument/documentSymbol` - provides a file-level outline of discovered procedures and variables for quick navigation in the editor.
 
 ## 2) Tech stack
 
@@ -152,8 +158,11 @@ Because LOGO has dialect differences and loose semantics, the project uses expli
 2. **Scope model for navigation**
    - Procedure parameters are local to procedure scope.
    - `LOCALMAKE` creates local variable symbols.
+   - `FOR [i ...] [ ... ]` and `DOTIMES [j ...] [ ... ]` control-list variables are modeled as block-scoped locals (visible only inside their loop body block).
    - `MAKE` is treated as global mutation unless explicitly local.
    - No independent block scope for `[]` blocks in navigation logic.
+
+   Current practical interpretation: full generic block-scope is **not** enabled for every construct; loop control variables are the explicit block-scoped case implemented for predictable navigation.
 
 3. **Variable resolution order for go-to-definition**
    - Resolve local declaration (before reference) -> parameter -> global declaration.
@@ -289,6 +298,7 @@ These commands are useful for parser/highlighter troubleshooting, but they are n
 - Full formal semantic verifier for all dialects.
 - Strict arity/type checking for every built-in form.
 - Incremental text sync complexity in the first pass (current sync is full-document).
+- Full formalization of `LOCAL`/`LOCALMAKE` scope rules across all LOGO dialect variants (the language references are not fully strict/consistent).
 
 ### What I would do next in production
 1. Switch to incremental text sync (`didChange` ranges).

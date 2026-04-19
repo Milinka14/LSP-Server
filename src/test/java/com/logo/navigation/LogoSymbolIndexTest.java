@@ -163,6 +163,54 @@ class LogoSymbolIndexTest {
         assertEquals(0, resolved.get().line());
     }
 
+    @Test
+    void resolvesForLoopVariableOnlyInsideLoopBlock() {
+        String source = """
+                TO demo
+                  FOR [i 1 3 1] [
+                    SHOW :i
+                  ]
+                  SHOW :i
+                END
+                """;
+
+        LogoSymbolIndex index = LogoSymbolIndex.build(source);
+        int[] inside = findNthPosition(source, ":i", 1);
+        int[] outside = findNthPosition(source, ":i", 2);
+
+        Optional<LogoSymbol> insideResolved = index.resolveAt(inside[0], inside[1]);
+        Optional<LogoSymbol> outsideResolved = index.resolveAt(outside[0], outside[1]);
+
+        assertTrue(insideResolved.isPresent());
+        assertEquals(LogoSymbolKind.LOCAL_VARIABLE, insideResolved.get().kind());
+        assertEquals("i", insideResolved.get().name());
+        assertTrue(outsideResolved.isEmpty());
+    }
+
+    @Test
+    void resolvesDotimesLoopVariableOnlyInsideLoopBlock() {
+        String source = """
+                TO demo
+                  DOTIMES [j 3] [
+                    SHOW :j
+                  ]
+                  SHOW :j
+                END
+                """;
+
+        LogoSymbolIndex index = LogoSymbolIndex.build(source);
+        int[] inside = findNthPosition(source, ":j", 1);
+        int[] outside = findNthPosition(source, ":j", 2);
+
+        Optional<LogoSymbol> insideResolved = index.resolveAt(inside[0], inside[1]);
+        Optional<LogoSymbol> outsideResolved = index.resolveAt(outside[0], outside[1]);
+
+        assertTrue(insideResolved.isPresent());
+        assertEquals(LogoSymbolKind.LOCAL_VARIABLE, insideResolved.get().kind());
+        assertEquals("j", insideResolved.get().name());
+        assertTrue(outsideResolved.isEmpty());
+    }
+
     private static int[] findNthPosition(String source, String needle, int occurrence) {
         int from = 0;
         int index = -1;
