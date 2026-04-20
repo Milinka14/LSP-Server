@@ -162,6 +162,7 @@ Because LOGO has dialect differences and loose semantics, the project uses expli
    - `LOCAL "x` introduces a local symbol in the nearest block (`[]`) when inside a block; otherwise in the current procedure scope.
    - `LOCALMAKE "x ...` introduces/updates a local symbol with the same nearest-block-or-procedure scope behavior.
    - `FOR [i ...] [ ... ]` and `DOTIMES [j ...] [ ... ]` control-list variables are block-scoped locals (visible only inside loop body).
+   - Loop-variable symbol scoping is currently modeled in procedure contexts (`TO ... END`) for predictable navigation behavior.
    - `MAKE "x ...` and `NAME ... "x` first resolve to an existing visible local; if none exists, they are treated as global assignments.
 
    Current practical interpretation: the implementation supports predictable scope behavior for parameters, `LOCAL`, `LOCALMAKE`, and loop variables, without attempting a full formal scope model for every LOGO dialect edge case.
@@ -230,6 +231,7 @@ These changes were introduced to reduce lag on larger `.logo` files while keepin
 - `TextDocumentSyncKind` is currently `Full` (not incremental diff sync).
 - Grammar intentionally targets practical coverage from `LOGO.txt`, but LOGO dialect variants may still differ.
 - Semantic diagnostics remain conservative by design.
+- Top-level script-scope loop variables (outside `TO ... END`) are not fully modeled as symbol scopes yet; this can be added with a dedicated global script scope layer.
 
 Possible next improvements:
 - incremental text sync (`didChange` range application)

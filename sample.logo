@@ -108,6 +108,5 @@ fractal_tree 50 6
 math_demo 10 5
 control_test
 random_walk 20
-
 print "Test_zavrsen
 bye

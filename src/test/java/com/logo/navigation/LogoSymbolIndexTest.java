@@ -303,6 +303,25 @@ class LogoSymbolIndexTest {
     }
 
     @Test
+    void resolvesMakeAssignmentTargetToLocalDeclaration() {
+        String source = """
+                TO demo
+                  LOCAL "shadow_var
+                  MAKE "shadow_var 100
+                END
+                """;
+
+        LogoSymbolIndex index = LogoSymbolIndex.build(source);
+        int[] makeTargetPos = findNthPosition(source, "\"shadow_var", 2);
+
+        Optional<LogoSymbol> resolved = index.resolveAt(makeTargetPos[0], makeTargetPos[1]);
+
+        assertTrue(resolved.isPresent());
+        assertEquals(LogoSymbolKind.LOCAL_VARIABLE, resolved.get().kind());
+        assertEquals("shadow_var", resolved.get().name());
+    }
+
+    @Test
     void resolvesLocalInBlockOnlyInsideThatBlock() {
         String source = """
                 TO demo

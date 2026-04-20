@@ -3,7 +3,7 @@
 
 make "global_ratio 0.75
 make "canvas_bg 7
-;tst
+;make "shadow_var 0 ; This will be overridden in the procedure to test scope
 make "temp_calc 3
 
 to setup_world :bg
@@ -35,6 +35,7 @@ end
 to variable_scope_test :val
     ; Tests: Difference between local, localmake, and make
     localmake "temp_calc :val * 2 ;local temp calc
+
     local "shadow_var
     make "shadow_var 100 ; This is local now because it was declared above
 

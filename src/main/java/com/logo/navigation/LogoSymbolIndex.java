@@ -492,6 +492,7 @@ public final class LogoSymbolIndex {
             }
             Token token = ctx.QUOTED_ID().getSymbol();
             String name = normalize(unquote(token.getText()));
+            boolean localTargetHandled = false;
             if (currentProcedure != null && ctx.LOCALMAKE() != null) {
                 ProcedureScope scope = scopes.get(currentProcedure);
                 LogoSymbol localSymbol = new LogoSymbol(
@@ -519,24 +520,25 @@ public final class LogoSymbolIndex {
                         token.getStartIndex()
                 );
                 if (targetsExistingLocal) {
-                    return;
-                }
-                if (ctx.MAKE() != null) {
-                    Token makeToken = ctx.MAKE().getSymbol();
-                    globalMakeWarnings.add(new GlobalMakeWarning(
-                            name,
-                            makeToken.getLine() - 1,
-                            makeToken.getCharPositionInLine()
-                    ));
-                }
-                globals.computeIfAbsent(name, k -> new ArrayList<>())
-                        .add(new LogoSymbol(
+                    localTargetHandled = true;
+                } else {
+                    if (ctx.MAKE() != null) {
+                        Token makeToken = ctx.MAKE().getSymbol();
+                        globalMakeWarnings.add(new GlobalMakeWarning(
                                 name,
-                                LogoSymbolKind.GLOBAL_VARIABLE,
-                                token.getLine() - 1,
-                                token.getCharPositionInLine(),
-                                token.getText().length(),
-                                null));
+                                makeToken.getLine() - 1,
+                                makeToken.getCharPositionInLine()
+                        ));
+                    }
+                    globals.computeIfAbsent(name, k -> new ArrayList<>())
+                            .add(new LogoSymbol(
+                                    name,
+                                    LogoSymbolKind.GLOBAL_VARIABLE,
+                                    token.getLine() - 1,
+                                    token.getCharPositionInLine(),
+                                    token.getText().length(),
+                                    null));
+                }
             } else {
                 globals.computeIfAbsent(name, k -> new ArrayList<>())
                         .add(new LogoSymbol(
@@ -546,6 +548,19 @@ public final class LogoSymbolIndex {
                                 token.getCharPositionInLine(),
                                 token.getText().length(),
                                 null));
+            }
+
+            // Treat MAKE/NAME assignment targets as variable references so go-to works on quoted names.
+            if (ctx.MAKE() != null || ctx.NAME() != null || localTargetHandled) {
+                references.add(new Reference(
+                        name,
+                        ReferenceKind.VARIABLE_REFERENCE,
+                        currentProcedure,
+                        token.getLine() - 1,
+                        token.getCharPositionInLine(),
+                        token.getText().length(),
+                        token.getStartIndex()
+                ));
             }
         }
 
