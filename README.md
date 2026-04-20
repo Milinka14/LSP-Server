@@ -19,13 +19,13 @@ The implementation is parser-driven (ANTLR) and keeps symbol resolution practica
   - variable references -> resolved declaration using implemented scope rules:
     - procedure parameters are procedure-scoped
     - `LOCAL` declarations create local symbols (block-scoped inside `[]`, procedure-scoped when declared outside block)
-    - `LOCALMAKE` follows the same scope behavior (block-scoped inside `[]`, otherwise procedure-scoped)
-    - `FOR` / `DOTIMES` control list variables are block-scoped (visible only inside loop body)
+    - `LOCALMAKE` follows the same scope behavior (block-scoped inside `[]`, otherwise procedure-scoped, can only be used inside procedures)
+    - `FOR` / `DOTIMES` control list variables are block-scoped (visible only inside loop body, currently modeled in procedure contexts)
     - `MAKE` / `NAME` in procedures target a visible local first; if no local exists, assignment is treated as global
     - fallback to global declaration when no closer local/parameter match exists
 
 ### Additional LSP features
-- `textDocument/publishDiagnostics` - publishes syntax diagnostics plus scope-aware semantic issues (undefined procedures, undefined/out-of-scope variables, and global-write `MAKE` warnings).
+- `textDocument/publishDiagnostics` - publishes syntax diagnostics plus scope-aware semantic issues (undefined procedures, undefined/out-of-scope variables, global-write `MAKE` warnings, and `LOCALMAKE` outside procedure errors).
 - `textDocument/completion` - suggests keywords, built-ins, user procedures, and only variables visible in the current scope.
 - `textDocument/hover` - shows symbol info (kind, declaration location, procedure parameters) and built-in command documentation.
 - `textDocument/references` - returns all usages of a selected procedure/variable, with optional inclusion of its declaration.
@@ -183,6 +183,7 @@ Because LOGO has dialect differences and loose semantics, the project uses expli
 ### MAKE / LOCAL / LOCALMAKE behavior used by this server
 - `LOCAL "x` -> declares `x` as local in the nearest block (`[]`) or procedure scope if outside blocks.
 - `LOCALMAKE "x value` -> local assignment with the same scope behavior as `LOCAL`.
+- `LOCALMAKE` used outside `TO ... END` is reported as an error because no procedure-local scope exists in that context.
 - `MAKE "x value` inside a procedure:
   - if a visible local `x` exists (`LOCAL`/`LOCALMAKE`), assignment is treated as local;
   - otherwise assignment is treated as global and a warning is emitted.

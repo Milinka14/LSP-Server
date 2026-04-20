@@ -183,4 +183,16 @@ class LogoParserFacadeTest {
                 () -> "Did not expect global MAKE warning, got: " + result.getIssues());
     }
 
+    @Test
+    void reportsErrorWhenLocalmakeIsUsedOutsideProcedure() {
+        String program = """
+                LOCALMAKE "x 1
+                PRINT :x
+                """;
+
+        ParseResult result = facade.parseSyntaxAndUndefinedCalls(program);
+        assertTrue(result.getIssues().stream().anyMatch(i -> i.message().contains("LOCALMAKE is only allowed inside a procedure.")),
+                () -> "Expected LOCALMAKE outside procedure error, got: " + result.getIssues());
+    }
+
 }

@@ -51,11 +51,47 @@ final class LogoSemanticAnalyzer {
     private static final class SemanticCollector extends LogoBaseListener {
         private final Map<String, Boolean> definitions = new HashMap<>();
         private final List<CallSite> calls = new ArrayList<>();
+        private final List<ParseIssue> immediateIssues = new ArrayList<>();
+        private int procedureDepth;
 
         @Override
         public void enterProcedureDefinition(LogoParser.ProcedureDefinitionContext ctx) {
             String procedureName = normalize(ctx.name.getText());
             definitions.putIfAbsent(procedureName, Boolean.TRUE);
+            procedureDepth++;
+        }
+
+        @Override
+        public void exitProcedureDefinition(LogoParser.ProcedureDefinitionContext ctx) {
+            procedureDepth = Math.max(0, procedureDepth - 1);
+        }
+
+        @Override
+        public void enterDefineProcedure(LogoParser.DefineProcedureContext ctx) {
+            if (ctx.name != null) {
+                String procedureName = normalize(ctx.name.getText());
+                definitions.putIfAbsent(procedureName, Boolean.TRUE);
+                procedureDepth++;
+            }
+        }
+
+        @Override
+        public void exitDefineProcedure(LogoParser.DefineProcedureContext ctx) {
+            if (ctx.name != null) {
+                procedureDepth = Math.max(0, procedureDepth - 1);
+            }
+        }
+
+        @Override
+        public void enterVariableAssignment(LogoParser.VariableAssignmentContext ctx) {
+            if (ctx.LOCALMAKE() != null && procedureDepth == 0) {
+                Token token = ctx.LOCALMAKE().getSymbol();
+                immediateIssues.add(new ParseIssue(
+                        token.getLine(),
+                        token.getCharPositionInLine(),
+                        "LOCALMAKE is only allowed inside a procedure."
+                ));
+            }
         }
 
         @Override
@@ -75,7 +111,7 @@ final class LogoSemanticAnalyzer {
         }
 
         private List<ParseIssue> finishIssues() {
-            List<ParseIssue> issues = new ArrayList<>();
+            List<ParseIssue> issues = new ArrayList<>(immediateIssues);
             for (CallSite call : calls) {
                 String callName = normalize(call.token.getText());
                 if (KNOWN_CALLS.contains(callName)) {
