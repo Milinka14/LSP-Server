@@ -207,8 +207,11 @@ final class LogoTextDocumentService implements TextDocumentService {
             String uri = params.getTextDocument().getUri();
             String source = documents.getOrDefault(uri, "");
             LogoSymbolIndex index = getOrBuildIndex(uri, source);
+            int line = params.getPosition().getLine();
+            int column = params.getPosition().getCharacter();
+            int offset = toOffset(source, line, column);
             Either<List<CompletionItem>, CompletionList> result =
-                    LogoCompletionSupport.complete(source, params.getPosition(), index.procedureNames(), index.variableNames());
+                    LogoCompletionSupport.complete(source, params.getPosition(), index.procedureNames(), index.variableNamesAt(line, column, offset));
             return CompletableFuture.completedFuture(result);
         } catch (Exception ex) {
             System.err.println("[logo-lsp] completion failed: " + ex.getMessage());
@@ -437,6 +440,32 @@ final class LogoTextDocumentService implements TextDocumentService {
 
     private static boolean isWordChar(char ch) {
         return Character.isLetterOrDigit(ch) || ch == '_' || ch == '?' || ch == '.';
+    }
+
+    private static int toOffset(String source, int line, int column) {
+        if (source.isEmpty()) {
+            return 0;
+        }
+        int lineStart = 0;
+        int currentLine = 0;
+        while (currentLine < line && lineStart < source.length()) {
+            int next = source.indexOf('\n', lineStart);
+            if (next < 0) {
+                return source.length();
+            }
+            lineStart = next + 1;
+            currentLine++;
+        }
+
+        int lineEnd = source.indexOf('\n', lineStart);
+        if (lineEnd < 0) {
+            lineEnd = source.length();
+        }
+        if (lineEnd > lineStart && source.charAt(lineEnd - 1) == '\r') {
+            lineEnd--;
+        }
+
+        return Math.max(lineStart, Math.min(lineStart + column, lineEnd));
     }
 
     private LogoSymbolIndex getOrBuildIndex(String uri, String source) {

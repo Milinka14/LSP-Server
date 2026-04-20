@@ -138,4 +138,49 @@ class LogoParserFacadeTest {
         assertTrue(result.isSuccess(), () -> "Expected success, got: " + result.getIssues());
     }
 
+    @Test
+    void reportsUndefinedVariableOutsideIftrueBlockScope() {
+        String program = """
+                TO demo
+                  IFTRUE [
+                    LOCALMAKE "visibility "Visible
+                    PRINT :visibility
+                  ]
+                  PRINT :visibility
+                END
+                """;
+
+        ParseResult result = facade.parseSyntaxAndUndefinedCalls(program);
+        assertTrue(result.getIssues().stream().anyMatch(i -> i.message().contains("Undefined variable: :visibility")),
+                () -> "Expected undefined variable diagnostic, got: " + result.getIssues());
+    }
+
+    @Test
+    void warnsWhenMakeInsideProcedureWritesGlobalVariable() {
+        String program = """
+                TO demo
+                  MAKE "x 1
+                END
+                """;
+
+        ParseResult result = facade.parseSyntaxAndUndefinedCalls(program);
+        assertTrue(result.getIssues().stream().anyMatch(i -> i.message().startsWith("MAKE inside procedure writes global variable")),
+                () -> "Expected global MAKE warning, got: " + result.getIssues());
+    }
+
+    @Test
+    void doesNotWarnWhenMakeTargetsLocalDeclaration() {
+        String program = """
+                TO demo
+                  LOCAL "x
+                  MAKE "x 1
+                  PRINT :x
+                END
+                """;
+
+        ParseResult result = facade.parseSyntaxAndUndefinedCalls(program);
+        assertTrue(result.getIssues().stream().noneMatch(i -> i.message().startsWith("MAKE inside procedure writes global variable")),
+                () -> "Did not expect global MAKE warning, got: " + result.getIssues());
+    }
+
 }

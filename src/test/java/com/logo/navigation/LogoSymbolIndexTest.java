@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LogoSymbolIndexTest {
@@ -209,6 +210,156 @@ class LogoSymbolIndexTest {
         assertEquals(LogoSymbolKind.LOCAL_VARIABLE, insideResolved.get().kind());
         assertEquals("j", insideResolved.get().name());
         assertTrue(outsideResolved.isEmpty());
+    }
+
+    @Test
+    void resolvesLocalmakeVariableOnlyInsideRepeatBlock() {
+        String source = """
+                TO demo
+                  REPEAT 2 [
+                    LOCALMAKE "x 1
+                    SHOW :x
+                  ]
+                  SHOW :x
+                END
+                """;
+
+        LogoSymbolIndex index = LogoSymbolIndex.build(source);
+        int[] inside = findNthPosition(source, ":x", 1);
+        int[] outside = findNthPosition(source, ":x", 2);
+
+        Optional<LogoSymbol> insideResolved = index.resolveAt(inside[0], inside[1]);
+        Optional<LogoSymbol> outsideResolved = index.resolveAt(outside[0], outside[1]);
+
+        assertTrue(insideResolved.isPresent());
+        assertEquals(LogoSymbolKind.LOCAL_VARIABLE, insideResolved.get().kind());
+        assertEquals("x", insideResolved.get().name());
+        assertTrue(outsideResolved.isEmpty());
+    }
+
+    @Test
+    void resolvesLocalmakeVariableInProcedureWhenNotInsideBlock() {
+        String source = """
+                TO demo
+                  LOCALMAKE "x 1
+                  SHOW :x
+                END
+                """;
+
+        LogoSymbolIndex index = LogoSymbolIndex.build(source);
+        int[] usePos = findNthPosition(source, ":x", 1);
+
+        Optional<LogoSymbol> resolved = index.resolveAt(usePos[0], usePos[1]);
+
+        assertTrue(resolved.isPresent());
+        assertEquals(LogoSymbolKind.LOCAL_VARIABLE, resolved.get().kind());
+        assertEquals("x", resolved.get().name());
+    }
+
+    @Test
+    void variableNamesAtRespectsBlockScopeForLocalmake() {
+        String source = """
+                MAKE "g 1
+                TO demo :p
+                  IFTRUE [
+                    LOCALMAKE "visibility "Visible
+                    SHOW :
+                  ]
+                  SHOW :
+                END
+                """;
+
+        LogoSymbolIndex index = LogoSymbolIndex.build(source);
+        int[] inside = findNthPosition(source, "SHOW :", 1);
+        int[] outside = findNthPosition(source, "SHOW :", 2);
+
+        Set<String> insideVars = index.variableNamesAt(inside[0], inside[1] + 6, toOffset(source, inside[0], inside[1] + 6));
+        Set<String> outsideVars = index.variableNamesAt(outside[0], outside[1] + 6, toOffset(source, outside[0], outside[1] + 6));
+
+        assertTrue(insideVars.contains("visibility"));
+        assertTrue(insideVars.contains("p"));
+        assertTrue(insideVars.contains("g"));
+        assertFalse(outsideVars.contains("visibility"));
+    }
+
+    @Test
+    void resolvesLocalThenMakeAsLocalVariable() {
+        String source = """
+                TO demo
+                  LOCAL "shadow_var
+                  MAKE "shadow_var 100
+                  PRINT :shadow_var
+                END
+                """;
+
+        LogoSymbolIndex index = LogoSymbolIndex.build(source);
+        int[] usePos = findNthPosition(source, ":shadow_var", 1);
+
+        Optional<LogoSymbol> resolved = index.resolveAt(usePos[0], usePos[1]);
+
+        assertTrue(resolved.isPresent());
+        assertEquals(LogoSymbolKind.LOCAL_VARIABLE, resolved.get().kind());
+        assertEquals("shadow_var", resolved.get().name());
+    }
+
+    @Test
+    void resolvesLocalInBlockOnlyInsideThatBlock() {
+        String source = """
+                TO demo
+                  IFTRUE [
+                    LOCAL "v
+                    MAKE "v 1
+                    PRINT :v
+                  ]
+                  PRINT :v
+                END
+                """;
+
+        LogoSymbolIndex index = LogoSymbolIndex.build(source);
+        int[] inside = findNthPosition(source, ":v", 1);
+        int[] outside = findNthPosition(source, ":v", 2);
+
+        Optional<LogoSymbol> insideResolved = index.resolveAt(inside[0], inside[1]);
+        Optional<LogoSymbol> outsideResolved = index.resolveAt(outside[0], outside[1]);
+
+        assertTrue(insideResolved.isPresent());
+        assertEquals(LogoSymbolKind.LOCAL_VARIABLE, insideResolved.get().kind());
+        assertTrue(outsideResolved.isEmpty());
+    }
+
+    @Test
+    void resolvesLocalCounterInsideBracketedDoUntilCondition() {
+        String source = """
+                TO control_test
+                  LOCALMAKE "counter 0
+                  DO.UNTIL [
+                    MAKE "counter :counter - 1
+                  ] [:counter = 0]
+                END
+                """;
+
+        LogoSymbolIndex index = LogoSymbolIndex.build(source);
+        int[] conditionUse = findNthPosition(source, ":counter", 3);
+
+        Optional<LogoSymbol> resolved = index.resolveAt(conditionUse[0], conditionUse[1]);
+
+        assertTrue(resolved.isPresent());
+        assertEquals(LogoSymbolKind.LOCAL_VARIABLE, resolved.get().kind());
+        assertEquals("counter", resolved.get().name());
+    }
+
+    private static int toOffset(String source, int line, int column) {
+        int currentLine = 0;
+        int offset = 0;
+        while (currentLine < line && offset < source.length()) {
+            int next = source.indexOf('\n', offset);
+            if (next < 0) {
+                return source.length();
+            }
+            offset = next + 1;
+            currentLine++;
+        }
+        return Math.min(source.length(), offset + column);
     }
 
     private static int[] findNthPosition(String source, String needle, int occurrence) {

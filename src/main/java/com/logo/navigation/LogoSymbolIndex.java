@@ -6,6 +6,7 @@ import com.logo.grammar.LogoParser;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.Token;
+import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
 
 import java.util.ArrayList;
@@ -25,6 +26,7 @@ public final class LogoSymbolIndex {
     private final Map<String, LogoSymbol> procedures;
     private final Map<String, List<LogoSymbol>> globalVariables;
     private final Map<String, ProcedureScope> procedureScopes;
+    private final List<GlobalMakeWarning> globalMakeWarnings;
     private final List<Reference> references;
     private final Map<Integer, List<Reference>> referencesByLine;
     private final List<LogoSymbol> allSymbols;
@@ -33,6 +35,7 @@ public final class LogoSymbolIndex {
             Map<String, LogoSymbol> procedures,
             Map<String, List<LogoSymbol>> globalVariables,
             Map<String, ProcedureScope> procedureScopes,
+            List<GlobalMakeWarning> globalMakeWarnings,
             List<Reference> references,
             Map<Integer, List<Reference>> referencesByLine,
             List<LogoSymbol> allSymbols
@@ -40,6 +43,7 @@ public final class LogoSymbolIndex {
         this.procedures = procedures;
         this.globalVariables = globalVariables;
         this.procedureScopes = procedureScopes;
+        this.globalMakeWarnings = globalMakeWarnings;
         this.references = references;
         this.referencesByLine = referencesByLine;
         this.allSymbols = allSymbols;
@@ -93,6 +97,38 @@ public final class LogoSymbolIndex {
         return names;
     }
 
+    public Set<String> variableNamesAt(int line, int column, int offset) {
+        Set<String> names = new HashSet<>(globalVariables.keySet());
+        ProcedureScope scope = findProcedureScope(offset);
+        if (scope == null) {
+            return names;
+        }
+        names.addAll(scope.visibleVariableNames(line, column, offset));
+        return names;
+    }
+
+    public List<UnresolvedVariable> unresolvedVariableReferences() {
+        List<UnresolvedVariable> unresolved = new ArrayList<>();
+        for (Reference reference : references) {
+            if (reference.kind != ReferenceKind.VARIABLE_REFERENCE) {
+                continue;
+            }
+            if (resolveVariable(reference).isPresent()) {
+                continue;
+            }
+            // Avoid false positives when a global exists but is declared later in the file.
+            if (globalVariables.containsKey(reference.name)) {
+                continue;
+            }
+            unresolved.add(new UnresolvedVariable(reference.name, reference.line, reference.column, reference.length));
+        }
+        return unresolved;
+    }
+
+    public List<GlobalMakeWarning> globalMakeWarnings() {
+        return List.copyOf(globalMakeWarnings);
+    }
+
     public List<LogoSymbol> allSymbols() {
         return allSymbols;
     }
@@ -138,6 +174,18 @@ public final class LogoSymbolIndex {
             return List.of();
         }
         return List.copyOf(scope.parameters.keySet());
+    }
+
+    private ProcedureScope findProcedureScope(int offset) {
+        if (offset < 0) {
+            return null;
+        }
+        for (ProcedureScope scope : procedureScopes.values()) {
+            if (scope.containsOffset(offset)) {
+                return scope;
+            }
+        }
+        return null;
     }
 
     private Optional<LogoSymbol> resolveVariable(Reference reference) {
@@ -219,6 +267,12 @@ public final class LogoSymbolIndex {
         VARIABLE_REFERENCE
     }
 
+    public record UnresolvedVariable(String name, int line, int column, int length) {
+    }
+
+    public record GlobalMakeWarning(String variableName, int line, int column) {
+    }
+
     private static final class Reference {
         private final String name;
         private final ReferenceKind kind;
@@ -247,6 +301,8 @@ public final class LogoSymbolIndex {
         private final String name;
         private final Map<String, LogoSymbol> parameters = new LinkedHashMap<>();
         private final Map<String, List<LocalBinding>> locals = new HashMap<>();
+        private int startOffset = -1;
+        private int endOffset = -1;
 
         private ProcedureScope(String name) {
             this.name = name;
@@ -258,6 +314,10 @@ public final class LogoSymbolIndex {
 
         private void addLocal(LogoSymbol symbol, int scopeStartOffset, int scopeEndOffset) {
             locals.computeIfAbsent(symbol.name(), k -> new ArrayList<>()).add(new LocalBinding(symbol, scopeStartOffset, scopeEndOffset));
+        }
+
+        private boolean hasVisibleLocalBefore(String varName, int line, int column, int offset) {
+            return findLatestLocalBefore(varName, line, column, offset) != null;
         }
 
         private LogoSymbol findLatestLocalBefore(String varName, int line, int column, int offset) {
@@ -275,6 +335,32 @@ public final class LogoSymbolIndex {
                 }
             }
             return null;
+        }
+
+        private Set<String> visibleVariableNames(int line, int column, int offset) {
+            Set<String> names = new HashSet<>(parameters.keySet());
+            for (List<LocalBinding> bindings : locals.values()) {
+                for (int i = bindings.size() - 1; i >= 0; i--) {
+                    LocalBinding binding = bindings.get(i);
+                    if (!isBeforeOrAt(binding.symbol, line, column)) {
+                        continue;
+                    }
+                    if (binding.isInScope(offset)) {
+                        names.add(binding.symbol.name());
+                        break;
+                    }
+                }
+            }
+            return names;
+        }
+
+        private void setRange(int startOffset, int endOffset) {
+            this.startOffset = startOffset;
+            this.endOffset = endOffset;
+        }
+
+        private boolean containsOffset(int offset) {
+            return startOffset >= 0 && endOffset >= 0 && offset >= startOffset && offset <= endOffset;
         }
     }
 
@@ -301,6 +387,7 @@ public final class LogoSymbolIndex {
         private final Map<String, LogoSymbol> procedures = new HashMap<>();
         private final Map<String, List<LogoSymbol>> globals = new HashMap<>();
         private final Map<String, ProcedureScope> scopes = new HashMap<>();
+        private final List<GlobalMakeWarning> globalMakeWarnings = new ArrayList<>();
         private final List<Reference> references = new ArrayList<>();
 
         private String currentProcedure;
@@ -345,7 +432,7 @@ public final class LogoSymbolIndex {
             }
             symbols.sort(byPosition);
 
-            return new LogoSymbolIndex(procedures, globals, scopes, references, byLine, List.copyOf(symbols));
+            return new LogoSymbolIndex(procedures, globals, scopes, List.copyOf(globalMakeWarnings), references, byLine, List.copyOf(symbols));
         }
 
         @Override
@@ -362,11 +449,23 @@ public final class LogoSymbolIndex {
             );
             procedures.putIfAbsent(normalized, symbol);
             scopes.putIfAbsent(normalized, new ProcedureScope(normalized));
+            ProcedureScope scope = scopes.get(normalized);
+            int start = ctx.getStart() == null ? -1 : ctx.getStart().getStartIndex();
+            int end = ctx.getStop() == null ? -1 : ctx.getStop().getStopIndex();
+            scope.setRange(start, end);
             currentProcedure = normalized;
         }
 
         @Override
         public void exitProcedureDefinition(LogoParser.ProcedureDefinitionContext ctx) {
+            if (currentProcedure != null) {
+                ProcedureScope scope = scopes.get(currentProcedure);
+                if (scope != null) {
+                    int start = ctx.getStart() == null ? -1 : ctx.getStart().getStartIndex();
+                    int end = ctx.getStop() == null ? -1 : ctx.getStop().getStopIndex();
+                    scope.setRange(start, end);
+                }
+            }
             currentProcedure = null;
         }
 
@@ -393,15 +492,51 @@ public final class LogoSymbolIndex {
             }
             Token token = ctx.QUOTED_ID().getSymbol();
             String name = normalize(unquote(token.getText()));
-            if (ctx.LOCALMAKE() != null && currentProcedure != null) {
+            if (currentProcedure != null && ctx.LOCALMAKE() != null) {
                 ProcedureScope scope = scopes.get(currentProcedure);
-                scope.addLocal(new LogoSymbol(
+                LogoSymbol localSymbol = new LogoSymbol(
                         name,
                         LogoSymbolKind.LOCAL_VARIABLE,
                         token.getLine() - 1,
                         token.getCharPositionInLine(),
                         token.getText().length(),
-                        scope.name));
+                        scope.name);
+
+                ScopeRange localRange = findNearestLocalScopeRange(ctx);
+                if (localRange == null) {
+                    // LOCALMAKE outside explicit [] block remains procedure-scoped.
+                    scope.addLocal(localSymbol);
+                } else {
+                    scope.addLocal(localSymbol, localRange.startOffset, localRange.endOffset);
+                }
+            } else if (currentProcedure != null && (ctx.MAKE() != null || ctx.NAME() != null)) {
+                ProcedureScope scope = scopes.get(currentProcedure);
+                boolean targetsExistingLocal = scope != null
+                        && scope.hasVisibleLocalBefore(
+                        name,
+                        token.getLine() - 1,
+                        token.getCharPositionInLine(),
+                        token.getStartIndex()
+                );
+                if (targetsExistingLocal) {
+                    return;
+                }
+                if (ctx.MAKE() != null) {
+                    Token makeToken = ctx.MAKE().getSymbol();
+                    globalMakeWarnings.add(new GlobalMakeWarning(
+                            name,
+                            makeToken.getLine() - 1,
+                            makeToken.getCharPositionInLine()
+                    ));
+                }
+                globals.computeIfAbsent(name, k -> new ArrayList<>())
+                        .add(new LogoSymbol(
+                                name,
+                                LogoSymbolKind.GLOBAL_VARIABLE,
+                                token.getLine() - 1,
+                                token.getCharPositionInLine(),
+                                token.getText().length(),
+                                null));
             } else {
                 globals.computeIfAbsent(name, k -> new ArrayList<>())
                         .add(new LogoSymbol(
@@ -458,6 +593,37 @@ public final class LogoSymbolIndex {
         }
 
         @Override
+        public void enterLocalDeclaration(LogoParser.LocalDeclarationContext ctx) {
+            if (currentProcedure == null || ctx.QUOTED_ID().isEmpty()) {
+                return;
+            }
+            ProcedureScope scope = scopes.get(currentProcedure);
+            if (scope == null) {
+                return;
+            }
+
+            ScopeRange localRange = findNearestLocalScopeRange(ctx);
+            for (var quotedIdNode : ctx.QUOTED_ID()) {
+                Token token = quotedIdNode.getSymbol();
+                String name = normalize(unquote(token.getText()));
+                LogoSymbol localSymbol = new LogoSymbol(
+                        name,
+                        LogoSymbolKind.LOCAL_VARIABLE,
+                        token.getLine() - 1,
+                        token.getCharPositionInLine(),
+                        token.getText().length(),
+                        scope.name
+                );
+
+                if (localRange == null) {
+                    scope.addLocal(localSymbol);
+                } else {
+                    scope.addLocal(localSymbol, localRange.startOffset, localRange.endOffset);
+                }
+            }
+        }
+
+        @Override
         public void enterControlStructure(LogoParser.ControlStructureContext ctx) {
             if (currentProcedure == null) {
                 return;
@@ -492,6 +658,37 @@ public final class LogoSymbolIndex {
             int scopeStart = block.getStart() == null ? -1 : block.getStart().getStartIndex();
             int scopeEnd = block.getStop() == null ? -1 : block.getStop().getStopIndex();
             scope.addLocal(symbol, scopeStart, scopeEnd);
+        }
+
+        private static ScopeRange findNearestLocalScopeRange(ParseTree node) {
+            ParseTree current = node.getParent();
+            while (current != null) {
+                if (current instanceof LogoParser.BlockContext block) {
+                    int start = block.getStart() == null ? -1 : block.getStart().getStartIndex();
+                    int end = block.getStop() == null ? -1 : block.getStop().getStopIndex();
+                    return new ScopeRange(start, end);
+                }
+
+                if (current instanceof LogoParser.ControlStructureContext control && control.REPEAT() != null
+                        && control.LBRACK() != null && control.RBRACK() != null) {
+                    Token startToken = control.LBRACK().getSymbol();
+                    Token endToken = control.RBRACK().getSymbol();
+                    return new ScopeRange(startToken.getStartIndex(), endToken.getStopIndex());
+                }
+
+                current = current.getParent();
+            }
+            return null;
+        }
+
+        private static final class ScopeRange {
+            private final int startOffset;
+            private final int endOffset;
+
+            private ScopeRange(int startOffset, int endOffset) {
+                this.startOffset = startOffset;
+                this.endOffset = endOffset;
+            }
         }
     }
 }

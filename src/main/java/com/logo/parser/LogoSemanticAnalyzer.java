@@ -51,32 +51,11 @@ final class LogoSemanticAnalyzer {
     private static final class SemanticCollector extends LogoBaseListener {
         private final Map<String, Boolean> definitions = new HashMap<>();
         private final List<CallSite> calls = new ArrayList<>();
-        private final List<ParseIssue> immediateIssues = new ArrayList<>();
-        private String currentProcedure;
 
         @Override
         public void enterProcedureDefinition(LogoParser.ProcedureDefinitionContext ctx) {
             String procedureName = normalize(ctx.name.getText());
             definitions.putIfAbsent(procedureName, Boolean.TRUE);
-            currentProcedure = procedureName;
-        }
-
-        @Override
-        public void exitProcedureDefinition(LogoParser.ProcedureDefinitionContext ctx) {
-            currentProcedure = null;
-        }
-
-        @Override
-        public void enterVariableAssignment(LogoParser.VariableAssignmentContext ctx) {
-            // Requested rule: MAKE inside procedure mutates global state, so flag it.
-            if (currentProcedure != null && ctx.MAKE() != null) {
-                var token = ctx.MAKE().getSymbol();
-                immediateIssues.add(new ParseIssue(
-                        token.getLine(),
-                        token.getCharPositionInLine(),
-                        "MAKE inside procedure writes global variable; use LOCALMAKE for local scope."
-                ));
-            }
         }
 
         @Override
@@ -96,7 +75,7 @@ final class LogoSemanticAnalyzer {
         }
 
         private List<ParseIssue> finishIssues() {
-            List<ParseIssue> issues = new ArrayList<>(immediateIssues);
+            List<ParseIssue> issues = new ArrayList<>();
             for (CallSite call : calls) {
                 String callName = normalize(call.token.getText());
                 if (KNOWN_CALLS.contains(callName)) {

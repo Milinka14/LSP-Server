@@ -18,13 +18,15 @@ The implementation is parser-driven (ANTLR) and keeps symbol resolution practica
   - procedure calls -> `TO` declaration
   - variable references -> resolved declaration using implemented scope rules:
     - procedure parameters are procedure-scoped
-    - `LOCALMAKE` variables are local to procedure scope
-    - `FOR` / `DOTIMES` control list variables are block scoped (visible only inside loop body)
+    - `LOCAL` declarations create local symbols (block-scoped inside `[]`, procedure-scoped when declared outside block)
+    - `LOCALMAKE` follows the same scope behavior (block-scoped inside `[]`, otherwise procedure-scoped)
+    - `FOR` / `DOTIMES` control list variables are block-scoped (visible only inside loop body)
+    - `MAKE` / `NAME` in procedures target a visible local first; if no local exists, assignment is treated as global
     - fallback to global declaration when no closer local/parameter match exists
 
 ### Additional LSP features
-- `textDocument/publishDiagnostics` - publishes syntax diagnostics from lexer/parser and selected low-noise semantic checks (for example undefined procedures).
-- `textDocument/completion` - suggests keywords, built-ins, user procedures, and variables based on cursor context.
+- `textDocument/publishDiagnostics` - publishes syntax diagnostics plus scope-aware semantic issues (undefined procedures, undefined/out-of-scope variables, and global-write `MAKE` warnings).
+- `textDocument/completion` - suggests keywords, built-ins, user procedures, and only variables visible in the current scope.
 - `textDocument/hover` - shows symbol info (kind, declaration location, procedure parameters) and built-in command documentation.
 - `textDocument/references` - returns all usages of a selected procedure/variable, with optional inclusion of its declaration.
 - `textDocument/documentSymbol` - provides a file-level outline of discovered procedures and variables for quick navigation in the editor.
@@ -157,23 +159,33 @@ Because LOGO has dialect differences and loose semantics, the project uses expli
 
 2. **Scope model for navigation**
    - Procedure parameters are local to procedure scope.
-   - `LOCALMAKE` creates local variable symbols.
-   - `FOR [i ...] [ ... ]` and `DOTIMES [j ...] [ ... ]` control-list variables are modeled as block-scoped locals (visible only inside their loop body block).
-   - `MAKE` is treated as global mutation unless explicitly local.
-   - No independent block scope for `[]` blocks in navigation logic.
+   - `LOCAL "x` introduces a local symbol in the nearest block (`[]`) when inside a block; otherwise in the current procedure scope.
+   - `LOCALMAKE "x ...` introduces/updates a local symbol with the same nearest-block-or-procedure scope behavior.
+   - `FOR [i ...] [ ... ]` and `DOTIMES [j ...] [ ... ]` control-list variables are block-scoped locals (visible only inside loop body).
+   - `MAKE "x ...` and `NAME ... "x` first resolve to an existing visible local; if none exists, they are treated as global assignments.
 
-   Current practical interpretation: full generic block-scope is **not** enabled for every construct; loop control variables are the explicit block-scoped case implemented for predictable navigation.
+   Current practical interpretation: the implementation supports predictable scope behavior for parameters, `LOCAL`, `LOCALMAKE`, and loop variables, without attempting a full formal scope model for every LOGO dialect edge case.
 
 3. **Variable resolution order for go-to-definition**
    - Resolve local declaration (before reference) -> parameter -> global declaration.
    - For globals, navigation targets declaration origin rather than latest assignment.
 
 4. **`MAKE` in procedure handling**
-   - Kept as supported LOGO behavior but reported as **warning** (`use LOCALMAKE for local scope`) to avoid hidden global side effects.
+   - `MAKE` inside procedures is warned only when it actually writes global state.
+   - If `MAKE` targets a visible local declared via `LOCAL`/`LOCALMAKE`, no global-write warning is emitted.
 
-5. **Undefined procedure check only (limited semantics)**
+5. **Semantic diagnostics with scope-awareness (still conservative)**
    - `Undefined procedure` is reported when user call is neither built-in nor defined.
-   - Undefined-variable checks were intentionally removed/limited due frequent false positives in dynamic LOGO usage and list/code duality.
+   - `Undefined variable` is reported when a `:name` reference cannot be resolved in visible local/parameter/global scope.
+   - Diagnostics intentionally avoid strict type/arity validation across all dialect variants.
+
+### MAKE / LOCAL / LOCALMAKE behavior used by this server
+- `LOCAL "x` -> declares `x` as local in the nearest block (`[]`) or procedure scope if outside blocks.
+- `LOCALMAKE "x value` -> local assignment with the same scope behavior as `LOCAL`.
+- `MAKE "x value` inside a procedure:
+  - if a visible local `x` exists (`LOCAL`/`LOCALMAKE`), assignment is treated as local;
+  - otherwise assignment is treated as global and a warning is emitted.
+- `NAME value "x` follows the same local-first/global-fallback resolution as `MAKE`, but without the global-write warning text.
 
 ## 7) Why semantic checks are intentionally lightweight
 
@@ -187,6 +199,7 @@ So the implementation prioritizes:
 - strong syntax validation
 - reliable navigation
 - practical diagnostics with low false-positive rate
+- scope-aware suggestions/diagnostics aligned with go-to-resolution behavior
 
 ## 8) Error recovery approach and limitations
 
@@ -289,7 +302,7 @@ These commands are useful for parser/highlighter troubleshooting, but they are n
 - Low-noise diagnostics that are still useful.
 
 ### Key trade-offs (intentional)
-- **Semantic checks are conservative**: undefined procedure + selected warning (`MAKE` inside procedure). I intentionally did not force strict variable-existence checks because LOGO runtime patterns (`thing`, dynamic names, list-as-code) make those checks unreliable.
+- **Semantic checks are conservative**: undefined procedures/variables and precise global-write `MAKE` warnings are included, while strict type/arity analysis remains out of scope.
 - **Coloring uses stable token types** over heavy modifier usage because IntelliJ themes map modifiers inconsistently.
 - **Scope model is pragmatic**: parameter/local/global resolution for navigation, without overcomplicated block-scope semantics for all dialect variants.
 - **Error handling is best-effort**: parser errors are surfaced, but the server still tries to keep hover/completion/navigation available.

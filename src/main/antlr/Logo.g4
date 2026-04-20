@@ -130,7 +130,7 @@ controlStructure
     ;
 
 block
-    : LBRACK statement* RBRACK
+    : LBRACK listElement* RBRACK
     ;
 
 forControlList

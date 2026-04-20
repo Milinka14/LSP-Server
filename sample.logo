@@ -19,6 +19,7 @@ to draw_star :size
         right :angle
         wait 2
     ]
+
 end
 
 to fractal_tree :length :depth
@@ -74,10 +75,13 @@ to control_test
     print "Do_until_test
     do.until [
         MAKE "counter :counter - 1
+        print (list "brojac :counter)
     ] [:counter = 0]
 
     dotimes [i 3] [
+        LOCALMAKE "iteracija i
         print (list "iteracija :i)
+        print :iteracija
     ]
 end
 
